@@ -1,7 +1,6 @@
 # Exploratory Data Analysis in R
 
-### Matt Dzievit, PhD - Research Analyst at Corteva Agriscience
-
+### Matt Dzievit, PhD
 December 17th, 2020 1PM (CST)
 
 Plant Breeders' Guide to R <br>A Webinar Series hosted by the [NAPB Education Committee](https://www.plantbreeding.org/)
