@@ -1,0 +1,551 @@
+---
+title: "Exploratory Data Analysis in R"
+subtitle: "Plant Breeders' Guide to R <br>A Webinar Series hosted by the NAPB Education Committee"
+author: "Matt Dzievit, PhD - Research Analyst at Corteva Agriscience"
+abstract: "Exploratory data analysis (EDA) is the cornerstone activity that all researchers should perform before conducting extensive analyses or decision making actives on a new data set. There are two objectives behind conducting an EDA, the hypothesis formulation cycle and data cleanup, both critical components in a plant breeding program. The common phrase in computer science of ‘garbage in, garbage out’ appropriately applies to EDA and the importance it has in providing good quality data for your research activities. Being successful with EDA is part asking the right questions about your data and part knowing the right analyses and visualizations to answer those questions. After today’s session, you should have a better idea how to conduct those analyses and visualizations using R."
+date: "December 17, 2020"
+output: 
+  html_document:
+    toc: true
+    toc_float: 
+      collapsed: true
+      smooth_scroll: false
+---
+
+# Foreword
+Most of the R analyses I do are in the 'tidyverse world'. These suite of packages and tools help speed up my data science processes. A lot of these are possible in base R, quite frankly, I just find thes packages to be easy to work with and more intuitive. This outline could be used independent of the coding language you use. Most of this stuff I learned just by searching for different graphical plots I wanted to make and pulling together the code to do it.
+
+You may also see me use this operator a lot: `%>%` (see more from package [magrittr](https://cran.r-project.org/web/packages/magrittr/vignettes/magrittr.html)) it is called a pipe and it is used to connect a stream of processes together. It is similiar to the pipe in Linux/Bash (roughly from my limied experience). I could run a line, save that variable, and then do something also to that data and save the intermediate data every time. Piping together my processes just saves time and declutters my work space.
+
+Finally, stop and ask questions! Let's have this be interactive. Plus I have made this available as an html, pdf, and the RMarkdown, so you can follow along and try this code out for yourself.
+
+# Resources
+A lot of the material and code was influenced by what I found online. Below are tutorials that I used to build this session. They are from true experts and go through this stuff in greater detail than I have.
+
+* [R for Data Science (Hadley Wickham)](https://r4ds.had.co.nz/exploratory-data-analysis.html)
+
+* [Exploratory Data Analysis with R (Roger D. Peng)](https://bookdown.org/rdpeng/exdata/)
+
+* [Explore Your Dataset in R (LittleMissData, Laura Ellis)](https://www.littlemissdata.com/blog/simple-eda)
+
+* [Chapter 4 - EDA with R (Tom D'Avello and Stephen Roecker)](http://ncss-tech.github.io/stats_for_soil_survey/chapters/4_exploratory_analysis/4_exploratory_analysis.html)
+
+* [Seven easy graphs to visualize correlation matrices in R (James Marqu)](http://jamesmarquezportfolio.com/correlation_matrices_in_r.html#.WP6WeFB-BPd.facebook)
+
+* Check all library and function documentations. A lot of useful information is locked away in there and we are going to gloss over a lot of those details.
+
+
+**Most importantly** find some blogs or other methods for staying on top of the new amazing packages that come out. Going through and creating this session, I was able to find newer packages that are offering really neat and helpful things.
+
+# R Package and Session details
+These are the list of packages we'll use throughout the session. Uncomment out the first line if you need to install the packages.
+```{r package download and setup, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+##install.packages(c("tidyverse","desplot","skimr","janitor","GGally","ggExtra","inspectdf"))
+library(tidyverse)
+library(desplot)
+library(skimr)
+library(janitor)
+library(GGally)
+library(ggExtra)
+library(inspectdf)
+```
+
+
+This just gives you some information on the package versions I am using to make conduct these plots and analyses. Also, it tells you about the version of R I am running as well.
+```{r session information}
+sessionInfo()
+```
+
+# Importing data tips and tricks
+First step is importing your data into R. Some of this was most likely covered during the last session of the series, but I do want to point out one area that I think is important to watch out for when importing data as it pertains to exploratory data analysis.
+
+```{r import field data}
+data <- read_csv("field_data.csv")
+```
+
+When the file is imported, you can see the column specifications that are assigned to each column.
+ 
+ * `read_csv` (readr package, loaded by tidyverse) function takes a guess after reading the first 1000 lines of your file (default value)
+ * can change this default if you think it needs to read more lines before guessing.
+ * If you know the data before hand, you can specify the data types to avoid mismatching of column data types
+
+Let's look at an example of this.
+
+Assume you are in the later stages of your breeding cycle and want to evaluate a few entries at many locations. Your collaborators send back some yield data from those locations but in multiple files. No problem, we can easily import those all into a single variable.
+
+```{r example not specifying data types}
+files <- dir(path = "import_example/",
+             full.names = TRUE,
+             pattern = "*.csv")
+temp_data1 <- files %>%
+  ##This comes from the purr package (loaded through tidyverse)
+  ##Highly recommend checking it out, I still have lots to learn
+  purrr::map_dfr(readr::read_csv)
+```
+
+We see upon import, the second file throws an error because the guesser assumed it was a logical data type for the 'value' column. I'll save you the trouble and tell you that the first 1000 rows in the second file are all missing, thus labelled as `NA` in the file. In the first file, there was a lot of data, and the column type was appropriately determined upon import. In this situation, we can override the guessing and just tell R to import the file and the corresponding data types.
+
+```{r example specifying data types}
+files <- dir(path = "import_example/",
+             full.names = TRUE,
+             pattern = "*.csv")
+temp_data1 <- files %>%
+  purrr::map_dfr(readr::read_csv, col_types = cols("id" = col_integer(),
+                                     "value" = col_integer()))
+
+```
+
+
+**Take home message**
+Keep an eye on how R imports your data and look at the column data types it assigns. This can save you headaches later on in your data analysis pipelines.
+
+# Screening and understanding your data
+## Previewing and summarizing
+
+The first few functions we'll talk about are ways to quickly summarize and preview some of your data that we just imported.
+
+ * `str()` shows the internal structure of your data. Easy way to get a quick overview of the data. Check the number of rows it imported, a snippet of the data and the column types that it loaded.
+
+```{r intro to str}
+
+str(data)
+```
+
+ * `glimpse()` if a function from the dplyr package (loaded from tidyverse) to get a glimpse of your data. It shows a lot of the same information, but provides more examples of the data from each column and summarizes the type
+ 
+```{r glimpse}
+dplyr::glimpse(data)
+```
+
+ * `skim()` is a really nice function from skimr. It is definitely one of those I discovered putting this session together and will utilize it more in my own day to day work!
+ 
+```{r skim}
+skimr::skim(data)
+```
+ 
+Good chance there are many other types of packages out there that do this similar type of summarizing. Could even write your own function depending on what you want to look at when you summarize your data.
+
+## Cleaning up your data via janitor
+Great package that honestly I haven't used nearly enough is called ['janitor'](https://github.com/sfirke/janitor). I would recommend you checkout the documentation and vignettes to get more information.
+
+It offers a few functions that are useful. We won't go over all of them, but I'll show you a couple:
+
+```{r examples using janitor}
+##Cleans up column names: Removed spaces (replace with underscore), lowercases everything, numbers duplicated columns.
+data_clean <- janitor::clean_names(data)
+
+##We can check out how this cleaned up the names:
+data.frame(orig = colnames(data), clean = colnames(data_clean))
+
+#We can check and see if there are any duplicated data points
+janitor::get_dupes(data_clean)
+```
+There are probably other packages that are available that can do similar or additional data clean up.
+
+## Tidy data
+What is tidy data?
+Hadley Wickam describes tidy data as away to structure data sets to facilitate analysis ([Tidy Data](https://vita.had.co.nz/papers/tidy-data.pdf)).
+A tidy data set has the following characteristics:
+
+* Each variable forms a column
+* Each observations forms a row
+* Each type of observational unit forms a table
+
+Our current data set does not represent tidy data; each row represents multiple observations
+```{r check structure of data}
+head(data_clean)
+```
+
+We can easily 'tidy' this data up,
+
+First, we have to split the quality codes for the observation from the recorded phenotypic value. If we don't, when we tidy the data it will force the quality code to an integer or the phenotypic value to a character. Either way is not ideal.
+
+Second, we'll have to join it back with the phenotypic value data set.
+```{r tidy up clean data}
+data_clean_tidy_quality <- data_clean %>%
+  dplyr::select(entry_id,ends_with('_quality')) %>% 
+  tidyr::pivot_longer(cols = tidyr::ends_with('_quality'),
+               names_to = 'trait_name',
+               values_to = 'quality_code') %>% 
+  dplyr::mutate(trait_name = stringr::str_remove(trait_name,'_quality'))
+
+##Check out what the code looks like:
+head(data_clean_tidy_quality)
+
+##Next we need to do the same for the phenotypic value, and then join it back with the data_clean_tidy_quality data
+data_clean_tidy <- data_clean %>% 
+  dplyr::select(1:11,!tidyr::ends_with('_quality')) %>% 
+  tidyr::pivot_longer(cols = colnames(data_clean)[setdiff(1:length(colnames(data_clean)),
+                                                   c(1:11,tidyr::ends_with(vars = colnames(data_clean), 
+                                                                    match = '_quality')))],
+               names_to = 'trait_name',
+               values_to = 'value') %>% 
+  dplyr::full_join(data_clean_tidy_quality, 
+            by = c('entry_id','trait_name'))
+
+##Now we have tidy data with the value and quality code on the same line
+head(data_clean_tidy)
+```
+
+## What kind of data do I have?
+Now that we have our tidy data, we can start digging into it and start exploring, but first let's see what type of field meta data we have collected.
+```{r intro explore field meta data}
+skimr::skim(data_clean_tidy)
+
+```
+You can't tell from the data, but assume this is a 2-row yield trial experiment. From the output we can see that our field experiment:
+
+ * Was grown at `r length(na.omit(unique(data_clean_tidy$loc_name)))` locations
+ * Evaluates `r length(na.omit(unique(data_clean_tidy$sample_name)))` different samples
+ * Has `r length(na.omit(unique(data_clean_tidy$material_type)))` different material types and entry types
+      + Material types: `r na.omit(unique(data_clean_tidy$material_type))`
+      + Where the entries are our topcrosses and the checks are our hybrids: `r knitr::kable(data_clean_tidy %>% select(material_type,entry_type) %>% unique())`
+ * Contains `r length(na.omit(unique(data_clean_tidy$family)))` different families
+ * Were tested with `r length(na.omit(unique(data_clean_tidy$tester)))` testers
+ * Was evaluated for `r unique(data_clean_tidy$trait_name)`
+ * Each trait could have the following quality code: `r unique(data_clean_tidy$quality_code)`
+    + G = Good
+    + S = Suppressed
+    + B = Bad
+
+When I look at those numbers, I know that I want to look at basic statistics across locations, across families, across tester, across material types, etc.
+
+## Field layout
+Before we dig into all the data, we should first look at your field layout. I'll show you how to create some basic field maps using ggplot2, but there are some packages out there that will do these field layouts + heatmaps for you, i.e.  [desplot](https://github.com/kwstat/desplot)
+
+```{r experiment looks like at each field}
+data_clean_tidy %>%
+  ##Feel free to change and tweak the different traits
+  dplyr::filter(trait_name == 'num_plts'
+                ##See what happend when you uncomment this line
+                #!,is.na(value)
+                ) %>% 
+  ggplot2::ggplot(aes(x = x,
+             y = y,
+             ##Good place to change material_type, value, tester, and quality code
+             fill = value)) + 
+  ggplot2::facet_wrap(~loc_name, scales = 'free') +
+  ggplot2::geom_tile() + 
+  ggplot2::theme_bw()
+```
+
+Personally, I don't recommend trying to look at all of your traits in the same plot because if you try and color them by a heatmap they will be distorted and you won't actually get to see anything. Picking related traits that have roughly the same range of measurements may alright, but for the most part I've had better success looking at them trait by trait.
+
+**Questions to think about**
+
+ * What is my expected number of plants (Targeted density, number of rows etc.)?
+ * Can I compare num_plts trait with any other trait we collected to see if these observations align?
+    + Are there other traits that I should be looking at together to see if they match my expectations? (i.e. pltht and earht)
+ * Are there locations or parts of my field that are higher/lower than expected? 
+    + Is there an underlying problem with the data?
+    + Or is this just expected field variation that should get adjusted from my statistical model, i.e. by location BLUEs?
+
+**Take home message** 
+
+There are lots of different things you can look at when you just plot out the field map and overlay it with different colors depending on what you are interested in looking at. Helps you dig into the data and start asking questions about why things are happening and directs you where to look next.
+
+# Data cleanup and identifying suspicious data
+## Introduction
+We already did some data cleanup when we ran the janitor package. Now, we can start looking at some of the data we have and marking data we think might be suspicious as bad, so we can exclude it from downstream analyses.
+
+I like to use suspicious data at first as opposed to the term outlier. Just because a data point it outside the realm of expected values (i.e. normal distribution) doesn't automatically label it as an outlier. That designation happens after you have investigated those suspicious data points and determined that yes they are most likely a product of human/robotic measurement error. We want to try and  be able to distinguish between 'really bad' (underlying data is inaccurate) and 'bad data' (underlying data is accurate).
+
+An extreme value for an observation may in fact be a true observation. If you exclude all those simply because they are too extreme for your expectations, you could be missing your chance to cull unreliable material from your breeding programs. In other words, be careful cherry picking your data when removing suspicious data. Try and flag suspicious plots to review so that you can go and review them and learn what happened.
+
+## Visualizaing distributions via histograms
+Most of the data we have collected is continuous, however there are categorical variables within our data that may benefit from looking at their counts via a histogram.
+
+We can look at histograms of this data as a good place to start identifying plot ratings that are outside our expectations or may identify some troublesome locations that were identified.
+
+```{r histograms categorical data}
+
+data_clean_tidy %>% 
+  dplyr::filter(trait_name == 'plot_rating') %>% 
+  ggplot2::ggplot(aes(value)) +
+  ggplot2::geom_histogram(bins = 10) +
+  ggplot2::facet_wrap(~loc_name, scales = 'free') +
+  ggplot2::theme_bw()
+
+```
+
+Looks like plot rating wasn't taken on a lot of our locations as 1,288 data were removed. 
+
+**Question**
+You ask your collaborators about this trait, plot_rating. What did everyone use as the expected range of values? You find out that everone used a 1-9 scale to rate these plots. So why are there data points that are showing up outside of this range?
+
+You could dig into this a little bit and then choose to mark these scores as bad or suppressed.
+```{r suppressing some odd values for plot rating}
+data_clean_tidy <- data_clean_tidy %>% 
+  dplyr::mutate(quality_code = ifelse(trait_name == 'plot_rating' &
+                          value > 9 | value < 1,'S',quality_code))
+```
+
+Now let's look at the same with a continuous variable
+```{r histogram with continuous variable}
+data_clean_tidy %>% 
+  dplyr::filter(loc_name == 'loc_8',
+         !is.na(value)) %>% 
+  ##rather then seeing those empty locations all the time, we can choose to remove the missing data points
+  ggplot2::ggplot(aes(value
+             ##Can look at the stacked barcharts and see if your quality codes for your data tell any pattern
+             #,fill = quality_code
+  )) +
+  ##You can either set the binwidth manually or you can use this function to identify the optimal size. This is helpful if you are graphing multiple traits at one time for a given location.
+  ggplot2::geom_histogram(binwidth = function(x) 2 * IQR(x) / (length(x)^(1/3))) +
+  ##can change this to by tester
+  ggplot2::facet_wrap(~trait_name, scales = 'free') +
+  ggplot2::theme_bw()
+```
+
+Alternatively, instead of using `facet_wrap` type plotting we can use a line graph to display distributions across different locations for example:
+```{r}
+data_clean_tidy %>% 
+  dplyr::filter(trait_name == 'earht') %>% 
+  ggplot2::ggplot(aes(x = value,
+             ##Changing this will switch between counts and density. Good to look at when sample sizes differ
+             after_stat(density),
+             colour = loc_name)) +
+  ggplot2::geom_freqpoly(binwidth = 5,
+                size = 1,
+                stat = ) +
+  ggplot2::theme_bw()
+
+
+
+```
+
+```{r cumulative density plots}
+##Or we can just call a cummulative density plot, it produces a very similiar lookng plot.
+data_clean_tidy %>% 
+  dplyr::filter(trait_name == 'earht') %>% 
+  ggplot2::ggplot(aes(x = value,
+             colour = loc_name)) +
+  ggplot2::stat_ecdf(geom = 'step') +
+  ggplot2::theme_bw()
+```
+
+We've reached the point where we can now generate lots of histograms. I'd recommend checking out the function's details for more cool tricks and tweaks you can make. There are more options out there then even I know/utilize.
+
+The purpose behind looking at these distributions is to make sure what I expect to see is actually occurring. Are my distributions appropriate given the trait that was collected? Are there any unusual patterns in the data that are worth exploring and digging into before we run our analysis?
+
+For example, looking at looking at the distributions for loc_8 across all traits. I found the skewness of a few traits interesting and might look into those.The num_plts trait was most interesting in the fact that we have no observations for 60 plants. Additionally, there appears to be something wrong with earht at loc_8. It's distribution is skewed to the right compared to the rest of the locations. Let's keep digging.
+
+## Checking for normal data
+We can easily generate some QQ plots, which is a plot of our observed data vs a normal distribution.
+
+```{r qq plots}
+data_clean_tidy %>% 
+  dplyr::filter(trait_name == 'earht',
+         !is.na(value)) %>% 
+  ggplot2::ggplot(aes(sample = value)) +
+  ggplot2::geom_qq() +
+  ggplot2::geom_qq_line() +
+  ggplot2::facet_wrap(~loc_name, scales = 'free') +
+  ggplot2::theme_bw()
+```
+
+Since we see there are a larger number of values on the tail ends of the normal distribution those could be values we want to investigate later.
+
+
+## Visualizing distrubution data with boxplots
+These are good for viewing your continuous data but summarized across a categorical variable. So in This case we might be interested in looking at the distributions for a trait across locations or across testers.
+
+```{r boxplots}
+data_clean_tidy %>% 
+  filter(trait_name == 'yield',
+         #entry_type == 'check',
+         !is.na(value)) %>% 
+  ##Nifty little way to reorder based on a stat. Helpful when looking for GxE and asking those questions.
+  ggplot2::ggplot(aes(x = reorder(
+    loc_name,
+    #sample_name,
+    value,FUN = median),
+    y = value)) +
+  ##If you do the jitter below, make your outliers white, otherwise they'll be showing up twice and may confuse or inflate the number of outliers according to the box plot.
+  ggplot2::geom_boxplot(outlier.colour = 'white') +
+  ggplot2::geom_jitter(aes(color = entry_type)) +
+  ggplot2::theme_bw() +
+  ggplot2::coord_flip()
+
+```
+
+## Visualizaing relationships with correlation plots
+There are a lot of different packages out there to do correlations. We'll cover a few of them and explain what we have available to look at.
+
+Our data is currently in the tidy format, but we need to spread it into a wide format to do these correlations.
+
+```{r correlations across traits}
+
+data_clean_wide <- data_clean_tidy %>%
+  dplyr::filter(trait_name %in% c('yield','tstwt','staygrn','hrvwt')) %>% 
+  dplyr::select(entry_id,trait_name,value) %>% 
+  tidyr::pivot_wider(names_from = trait_name,
+              values_from = value) %>% 
+  dplyr::select(-entry_id)
+
+GGally::ggpairs(data_clean_wide)
+```
+
+```{r correlations across traits option 2}
+data_clean_wide_all <- data_clean_tidy %>%
+  dplyr::select(entry_id,trait_name,value) %>% 
+  tidyr::pivot_wider(names_from = trait_name,
+              values_from = value) %>% 
+  dplyr::select(-entry_id)
+
+
+##We can also look at all of our correlations in a table/graphical format
+inspectdf::inspect_cor(data_clean_wide_all) %>% 
+  inspectdf::show_plot()
+
+```
+
+
+Alternatively, we can explore the correlation between locations for a given trait.
+We know that there are multiple checks across each location, so we need to remove those and just compare correlations among our entries. 
+```{r correlations across locations for a given trait}
+
+data_clean_wide_loc <- data_clean_tidy %>%
+  dplyr::filter(trait_name == 'yield',
+         !is.na(value),
+         entry_type == 'entry') %>% 
+  dplyr::select(sample_id,loc_name,value) %>%
+  tidyr::pivot_wider(names_from = loc_name,
+              values_from = value) %>% 
+  dplyr::select(-sample_id)
+
+GGally::ggpairs(data_clean_wide_loc)
+```
+
+We can look at performance across locations by entries, we can also do that with our checks
+
+```{r check performance across locations}
+data_clean_tidy %>% 
+  dplyr::filter(trait_name == 'yield',
+         entry_type == 'check',
+         !is.na(value)) %>%
+  dplyr::group_by(sample_name,loc_name) %>% 
+  dplyr::summarise(avg_value = mean(value,na.rm = TRUE)) %>% 
+  dplyr::ungroup() %>% 
+  ggplot2::ggplot(aes(x = reorder(
+    loc_name,
+    avg_value,
+    FUN = median),
+    y = avg_value,
+    color = sample_name,
+    group = sample_name)) +
+  ggplot2::geom_point() +
+  ggplot2::geom_line() +
+  ggplot2::theme_bw()
+
+
+```
+
+
+We can see some interesting relationships that we may want to explore some more. We can start plotting out some XY plots and looking how these relate to each other.
+
+```{r XY plot + marginal display}
+##We can fist see what the XY plot looks like
+(xy_plot <- data_clean_tidy %>% 
+   dplyr::filter(trait_name %in% c('pltht','earht')) %>% 
+   dplyr::select(entry_id,loc_name,trait_name,value) %>% 
+   tidyr::pivot_wider(names_from = trait_name,
+               values_from = value) %>% 
+   ggplot2::ggplot(aes(x = earht,
+              y = pltht,
+              colour = loc_name)) +
+   ggplot2::geom_point() +
+   ggplot2::theme_bw())
+
+##Using a nifty function from ggExtra, we can add distributions into the margin.
+##This would be helpful if you are plotting a lot of dense overlapping data to get a better idea of the distribution.
+ggmarginal_out <- ggExtra::ggMarginal(p = xy_plot,
+                             groupColour = TRUE, 
+                             groupFill = TRUE)
+
+```
+
+```{r output of the marginal graph, echo=FALSE}
+grid::grid.newpage()
+grid::grid.draw(ggmarginal_out)
+```
+
+
+## Managing expectations and how to fix them
+
+One of the expectations I would have with corn data is that the plant's height should always be taller than the ear. So how can we easily check for that?
+
+```{r compare earht and pltht}
+data_clean_tidy %>% 
+  dplyr::filter(trait_name %in% c('pltht','earht')) %>% 
+  dplyr::select(entry_id,loc_name,trait_name,value) %>% 
+  tidyr::pivot_wider(names_from = trait_name,
+              values_from = value) %>% 
+  dplyr::mutate(pltht_earht_diff = pltht - earht) %>% 
+  ggplot2::ggplot(aes(x = entry_id,
+             y = pltht_earht_diff,
+             color = loc_name)) +
+  ggplot2::geom_point() +
+ ggplot2:: theme_bw()
+```
+
+Now we can easily look at these data points that don't meet our expectations and either double check our collected data, go back to the field and spot check these (if possible) or just exclude them from our analysis. Looking whether the different is large or negative tells us which measurement may be suspicious. 
+
+Now we've seen that loc_8 pop up a few time where something looked strange about it. Let's dig into that one a little bit and see what is going on.
+
+```{r odd loc_8 investigation}
+data_clean_tidy %>% 
+  dplyr::filter(trait_name %in% c('earht')) %>% 
+  dplyr::group_by(loc_name) %>% 
+  dplyr::summarize(avg = mean(value,
+                              na.rm = TRUE),
+            median = median(value,
+                            na.rm = TRUE),
+            n = n()) %>% 
+  dplyr::ungroup()
+```
+
+Looking at these averages across the locations, I would speculate that someone forgot to convert units from metric to imperial. Let's see what the data looks like if we convert those back.
+
+```{r converting data}
+data_clean_tidy %>% 
+  dplyr::filter(trait_name %in% c('earht')) %>% 
+  dplyr::mutate(value = ifelse(loc_name == 'loc_8',
+                               value/2.54,
+                               value)) %>% 
+    group_by(loc_name) %>% 
+  dplyr::summarize(avg = mean(value,
+                              na.rm = TRUE),
+            median = median(value,
+                            na.rm = TRUE),
+            n = n()) %>% 
+  dplyr::ungroup()
+```
+
+The averages are lower, but they are more aligned to what I would expect for an ear height in corn.
+
+Let's quick look at the boxplots again
+```{r boxplots for transformed data}
+data_clean_tidy %>% 
+  dplyr::filter(trait_name %in% c('earht')) %>% 
+  dplyr::bind_rows(data_clean_tidy %>%
+               dplyr::filter(trait_name %in% c('earht'),
+                      loc_name == 'loc_8') %>%
+              dplyr::mutate(value = ifelse(loc_name == 'loc_8',
+                                           value/2.54,
+                                           value),
+                     loc_name = 'loc_8_fixed')) %>% 
+  ggplot2::ggplot(aes(x = loc_name,
+             y = value,
+             color = loc_name)) +
+  ggplot2::geom_boxplot() + 
+  ggplot2::theme_bw()
+```
+
+Now when we compare the fixed location 8 against the original loc 8, we can see that our assumption was correct. It didn't hurt that our collaborators later confirmed with us that they measured in metric and forgot to transform that trait's data to imperial!!
+
+
+# Conclusion
+
+We really only scratched the surface in what we can do with exploratory data analysis. I think that the biggest thing you can gain from this session is how to easily and quickly manipulate your data and generate some simple graphics to either confirm your suspicions and allow you to go to the next step or to nix that idea. You should be able to spend most of your time sitting and thinking about the data and asking new questions instead of playing around with manipulating your data and coming up with plots. You'll have plenty of time to mess with making extraordinary plots if you are publishing your results :)
